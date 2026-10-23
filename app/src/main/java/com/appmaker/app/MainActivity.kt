@@ -2,25 +2,17 @@ package com.appmaker.app
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.ImageDecoder
 import android.graphics.Typeface
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -35,51 +27,52 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnGallery: Button
     private lateinit var btnAddNote: Button
     private lateinit var recyclerViewNotes: RecyclerView
+    private lateinit var previewImageView: ImageView
 
     private val notesList = mutableListOf<NoteModel>()
     private lateinit var notesAdapter: NotesAdapter
-    private var currentAttachedBitmap: Bitmap? = null
+    
+    // حفظ مسار الصورة أو البيتماب بشكل آمن
+    private var currentImageUri: Uri? = null
+    private var currentBitmap: Bitmap? = null
 
-    data class NoteModel(val title: String, val content: String, val image: Bitmap?)
+    data class NoteModel(val title: String, val content: String, val imageUri: Uri?, val bitmap: Bitmap?)
 
-    // طلب إذن الكاميرا عند التشغيل
+    // طلب إذن الكاميرا
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             openCamera()
         } else {
-            Toast.makeText(this, "يرجى منح صلاحية الكاميرا من إعدادات الهاتف", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "يرجى تفعيل صلاحية الكاميرا", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // التقاط الصورة بالكاميرا
+    // التقاط صورة الكاميرا
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val imageBitmap = result.data?.extras?.get("data") as? Bitmap
-            currentAttachedBitmap = imageBitmap
-            Toast.makeText(this, "📸 تم التقاط الصورة وإرفاقها بالملاحظة", Toast.LENGTH_SHORT).show()
+            if (imageBitmap != null) {
+                currentBitmap = imageBitmap
+                currentImageUri = null
+                previewImageView.setImageBitmap(imageBitmap)
+                previewImageView.visibility = View.VISIBLE
+                Toast.makeText(this, "📸 تم التقاط الصورة وإرفاقها", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    // اختيار الصورة من المعرض
+    // اختيار صورة من المعرض
     private val galleryLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri: Uri? = result.data?.data
             if (uri != null) {
-                try {
-                    val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        val source = ImageDecoder.createSource(this.contentResolver, uri)
-                        ImageDecoder.decodeBitmap(source)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        MediaStore.Images.Media.getBitmap(this.contentResolver, uri)
-                    }
-                    currentAttachedBitmap = bitmap
-                    Toast.makeText(this, "🖼 تم استيراد الصورة وإرفاقها بالملاحظة", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this, "تعذر قراءة ملف الصورة", Toast.LENGTH_SHORT).show()
-                }
+                currentImageUri = uri
+                currentBitmap = null
+                previewImageView.setImageURI(uri)
+                previewImageView.visibility = View.VISIBLE
+                Toast.makeText(this, "🖼 تم تحديد الصورة بنجاح", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -94,6 +87,28 @@ class MainActivity : AppCompatActivity() {
         btnGallery = findViewById(R.id.btnGallery)
         btnAddNote = findViewById(R.id.btnAddNote)
         recyclerViewNotes = findViewById(R.id.recyclerViewNotes)
+
+        // إنشاء نافذة معاينة سريعة برمجياً تحت الأزرار
+        val density = resources.displayMetrics.density
+        previewImageView = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (160 * density).toInt()
+            ).apply {
+                val pad = (10 * density).toInt()
+                setMargins(pad, pad, pad, pad)
+            }
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.parseColor("#2A2A3C"))
+            visibility = View.GONE
+        }
+
+        // إضافة صورة المعاينة مباشرة فوق الـ RecyclerView
+        val parentLayout = recyclerViewNotes.parent as? ViewGroup
+        if (parentLayout != null) {
+            val index = parentLayout.indexOfChild(recyclerViewNotes)
+            parentLayout.addView(previewImageView, index)
+        }
 
         notesAdapter = NotesAdapter(notesList)
         recyclerViewNotes.layoutManager = LinearLayoutManager(this)
@@ -116,17 +131,22 @@ class MainActivity : AppCompatActivity() {
             val title = etTitle.text.toString().trim()
             val content = etContent.text.toString().trim()
 
-            if (title.isNotEmpty() || content.isNotEmpty() || currentAttachedBitmap != null) {
-                notesList.add(0, NoteModel(title, content, currentAttachedBitmap))
+            if (title.isNotEmpty() || content.isNotEmpty() || currentImageUri != null || currentBitmap != null) {
+                notesList.add(0, NoteModel(title, content, currentImageUri, currentBitmap))
                 notesAdapter.notifyItemInserted(0)
                 recyclerViewNotes.scrollToPosition(0)
 
+                // تصفير الحقول ومعاينة الصورة
                 etTitle.text.clear()
                 etContent.text.clear()
-                currentAttachedBitmap = null
-                Toast.makeText(this, "💾 تم حفظ الملاحظة بنجاح", Toast.LENGTH_SHORT).show()
+                currentImageUri = null
+                currentBitmap = null
+                previewImageView.setImageDrawable(null)
+                previewImageView.visibility = View.GONE
+
+                Toast.makeText(this, "💾 تم حفظ الملاحظة وإدراجها بالأسفل", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "يرجى كتابة نص أو التقاط صورة أولاً", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "اكتب نصاً أو اختر صورة أولاً", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -136,11 +156,11 @@ class MainActivity : AppCompatActivity() {
         try {
             cameraLauncher.launch(takePictureIntent)
         } catch (e: Exception) {
-            Toast.makeText(this, "تعذر تشغيل تطبيق الكاميرا", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "تعذر تشغيل الكاميرا", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // بناء واجهة بطاقة الملاحظة والصورة برمجياً 100% دون الحاجة لأي ملف XML
+    // بناء كرت الملاحظة في القائمة
     inner class NotesAdapter(private val notes: List<NoteModel>) : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
 
         inner class NoteViewHolder(
@@ -154,11 +174,10 @@ class MainActivity : AppCompatActivity() {
             val context = parent.context
             val density = context.resources.displayMetrics.density
 
-            // حاوية البطاقة
             val cardLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                val pad = (14 * density).toInt()
-                val bottomM = (10 * density).toInt()
+                val pad = (12 * density).toInt()
+                val bottomM = (12 * density).toInt()
                 setPadding(pad, pad, pad, pad)
                 setBackgroundColor(Color.parseColor("#1E1E2E"))
                 layoutParams = RecyclerView.LayoutParams(
@@ -169,7 +188,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // عنصر عرض الصورة المرفقة
             val ivImage = ImageView(context).apply {
                 val imgHeight = (180 * density).toInt()
                 val imgBottomM = (8 * density).toInt()
@@ -183,7 +201,6 @@ class MainActivity : AppCompatActivity() {
                 visibility = View.GONE
             }
 
-            // عنوان الملاحظة
             val tvTitle = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -194,7 +211,6 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(Color.parseColor("#BB86FC"))
             }
 
-            // محتوى الملاحظة
             val tvContent = TextView(context).apply {
                 val topM = (4 * density).toInt()
                 layoutParams = LinearLayout.LayoutParams(
@@ -204,7 +220,7 @@ class MainActivity : AppCompatActivity() {
                     topMargin = topM
                 }
                 textSize = 14f
-                setTextColor(Color.parseColor("#CCCCCC"))
+                setTextColor(Color.parseColor("#DDDDDD"))
             }
 
             cardLayout.addView(ivImage)
@@ -216,14 +232,21 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: NoteViewHolder, position: Int) {
             val note = notes[position]
-            holder.tvTitle.text = if (note.title.isNotEmpty()) note.title else "بدون عنوان"
+            holder.tvTitle.text = if (note.title.isNotEmpty()) note.title else "ملاحظة جديدة"
             holder.tvContent.text = note.content
 
-            if (note.image != null) {
-                holder.ivImage.setImageBitmap(note.image)
-                holder.ivImage.visibility = View.VISIBLE
-            } else {
-                holder.ivImage.visibility = View.GONE
+            when {
+                note.bitmap != null -> {
+                    holder.ivImage.setImageBitmap(note.bitmap)
+                    holder.ivImage.visibility = View.VISIBLE
+                }
+                note.imageUri != null -> {
+                    holder.ivImage.setImageURI(note.imageUri)
+                    holder.ivImage.visibility = View.VISIBLE
+                }
+                else -> {
+                    holder.ivImage.visibility = View.GONE
+                }
             }
         }
 
