@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">ملاحظاتي الذكية</string>
+    <string name="hint_title">عنوان الملاحظة...</string>
+    <string name="hint_content">اكتب تفاصيل الملاحظة هنا...</string>
+    <string name="btn_add">حفظ الملاحظة</string>
+    <string name="btn_camera">التقاط كاميرا</string>
+    <string name="btn_gallery">استيراد صورة</string>
+</resources>
