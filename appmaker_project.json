@@ -3,7 +3,7 @@
   "name": "ملاحظات",
   "packageId": "com.appmaker.notes33",
   "versionCode": 1,
-  "versionName": "1.0.0",
+  "versionName": "1.0.1",
   "type": "Kotlin (AI)",
   "orientation": "portrait",
   "fullscreen": false,
@@ -38,5 +38,5 @@
     "foregroundService": false,
     "biometric": false
   },
-  "updatedAt": "2026-10-23T07:19:58.177Z"
+  "updatedAt": "2026-10-23T07:32:26.623Z"
 }
